@@ -13,7 +13,7 @@ Under development:
 - Timeout Processing
 - HTTP Support
 - Load Balance
-- Discovery and Registry
+- Registry and Discovery
 
 ## Usage
 Refer to `main/main.go`
