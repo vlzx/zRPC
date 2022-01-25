@@ -3,6 +3,7 @@ package zrpc
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/vlzx/zrpc/codec"
 	"io"
 	"log"
@@ -10,18 +11,21 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 )
 
 const MagicNumber = 0x2a
 
 type Option struct {
-	MagicNumber int
-	CodecType   string
+	MagicNumber    int
+	CodecType      string
+	ConnectTimeout time.Duration
 }
 
 var DefaultOption = &Option{
-	MagicNumber: MagicNumber,
-	CodecType:   codec.GobType,
+	MagicNumber:    MagicNumber,
+	CodecType:      codec.GobType,
+	ConnectTimeout: time.Second * 10,
 }
 
 type Server struct {
@@ -180,11 +184,31 @@ func (server *Server) sendResponse(c codec.Codec, header *codec.Header, body int
 func (server *Server) handleRequest(c codec.Codec, req *request, sending *sync.Mutex, wg *sync.WaitGroup) {
 	defer wg.Done()
 	log.Println(req.header, req.argv)
-	err := req.svc.call(req.mType, req.argv, req.replyv)
-	if err != nil {
-		req.header.Error = err.Error()
-		server.sendResponse(c, req.header, invalidRequest, sending)
+	called := make(chan struct{}, 1)
+	sent := make(chan struct{}, 1)
+	timeout := req.header.Timeout
+	go func() {
+		err := req.svc.call(req.mType, req.argv, req.replyv)
+		called <- struct{}{}
+		if err != nil {
+			req.header.Error = err.Error()
+			server.sendResponse(c, req.header, invalidRequest, sending)
+			sent <- struct{}{}
+			return
+		}
+		server.sendResponse(c, req.header, req.replyv.Interface(), sending)
+		sent <- struct{}{}
+	}()
+	if timeout == 0 {
+		<-called
+		<-sent
 		return
 	}
-	server.sendResponse(c, req.header, req.replyv.Interface(), sending)
+	select {
+	case <-time.After(timeout):
+		req.header.Error = fmt.Sprintf("rpc server: handle request timeout: expect within %s", timeout)
+		server.sendResponse(c, req.header, invalidRequest, sending)
+	case <-called:
+		<-sent
+	}
 }

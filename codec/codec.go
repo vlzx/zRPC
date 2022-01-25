@@ -1,11 +1,15 @@
 package codec
 
-import "io"
+import (
+	"io"
+	"time"
+)
 
 type Header struct {
 	ServiceMethod string
 	Seq           uint64
 	Error         string
+	Timeout       time.Duration
 }
 
 type Codec interface {
