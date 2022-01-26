@@ -4,6 +4,7 @@ import (
 	"github.com/vlzx/zrpc"
 	"log"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -33,19 +34,18 @@ func startServer(addr chan string) {
 	if err != nil {
 		log.Fatal("register error:", err)
 	}
-	listener, err := net.Listen("tcp", ":0")
+	listener, err := net.Listen("tcp", ":9999")
 	if err != nil {
 		log.Fatal("network error:", err)
 	}
+	zrpc.HandleHTTP()
 	log.Println("start rpc server on", listener.Addr())
 	addr <- listener.Addr().String()
-	zrpc.Accept(listener)
+	_ = http.Serve(listener, nil)
 }
 
-func main() {
-	addr := make(chan string)
-	go startServer(addr)
-	client, _ := zrpc.Dial("tcp", <-addr)
+func call(addr chan string) {
+	client, _ := zrpc.DialHTTP("tcp", <-addr)
 	defer func() { _ = client.Close() }()
 
 	time.Sleep(time.Second)
@@ -66,7 +66,9 @@ func main() {
 			log.Printf("%d + %d = %d", args.Num1, args.Num2, reply)
 		}(i)
 	}
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		var reply int
 		err := client.Call("Foo.SumSlice", s, &reply)
 		if err != nil {
@@ -75,4 +77,10 @@ func main() {
 		log.Printf("sum %v = %d", s, reply)
 	}()
 	wg.Wait()
+}
+
+func main() {
+	addr := make(chan string)
+	go call(addr)
+	startServer(addr)
 }

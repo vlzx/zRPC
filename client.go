@@ -1,6 +1,7 @@
 package zrpc
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,8 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -253,5 +256,37 @@ func (client *Client) Call(serviceMethod string, args interface{}, reply interfa
 		return errors.New("rpc client: call timeout: " + ctx.Err().Error())
 	case call := <-call.Done:
 		return call.Error
+	}
+}
+
+func NewClientWithHTTP(conn net.Conn, opt *Option) (*Client, error) {
+	_, _ = io.WriteString(conn, fmt.Sprintf("CONNECT %s HTTP/1.0\n\n", defaultRPCPath))
+	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: "CONNECT"})
+	if err == nil {
+		if resp.Status == connected {
+			return NewClient(conn, opt)
+		}
+		err = errors.New("unexpected HTTP response: " + resp.Status)
+	}
+	return nil, err
+}
+
+func DialHTTP(network string, address string, opts ...*Option) (*Client, error) {
+	return dialTimeout(NewClientWithHTTP, network, address, opts...)
+}
+
+func XDial(rpcAddr string, opts ...*Option) (*Client, error) {
+	tokens := strings.Split(rpcAddr, "@")
+	if len(tokens) != 2 {
+		return nil, fmt.Errorf("rpc client: wrong zRPC address format '%s', expect protocol@addr", rpcAddr)
+	}
+	protocol, addr := tokens[0], tokens[1]
+	switch protocol {
+	case "http":
+		return DialHTTP(protocol, addr, opts...)
+	case "tcp":
+		return Dial(protocol, addr, opts...)
+	default:
+		return nil, fmt.Errorf("rpc client: unsupported protocol %s, expect http or tcp", protocol)
 	}
 }
