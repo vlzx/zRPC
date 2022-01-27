@@ -244,16 +244,16 @@ func (client *Client) Go(serviceMethod string, args interface{}, reply interface
 	return call
 }
 
-func (client *Client) Call(serviceMethod string, args interface{}, reply interface{}, ctxs ...context.Context) error {
-	ctx := context.Background()
-	if len(ctxs) == 1 && ctxs[0] != nil {
-		ctx = ctxs[0]
+func (client *Client) Call(serviceMethod string, args interface{}, reply interface{}, ctx ...context.Context) error {
+	defaultCtx := context.Background()
+	if len(ctx) == 1 && ctx[0] != nil {
+		defaultCtx = ctx[0]
 	}
 	call := client.Go(serviceMethod, args, reply, make(chan *Call, 1))
 	select {
-	case <-ctx.Done():
+	case <-defaultCtx.Done():
 		client.removeCall(call.Seq)
-		return errors.New("rpc client: call timeout: " + ctx.Err().Error())
+		return errors.New("rpc client: call timeout: " + defaultCtx.Err().Error())
 	case call := <-call.Done:
 		return call.Error
 	}
@@ -283,9 +283,9 @@ func XDial(rpcAddr string, opts ...*Option) (*Client, error) {
 	protocol, addr := tokens[0], tokens[1]
 	switch protocol {
 	case "http":
-		return DialHTTP(protocol, addr, opts...)
+		return DialHTTP("tcp", addr, opts...)
 	case "tcp":
-		return Dial(protocol, addr, opts...)
+		return Dial("tcp", addr, opts...)
 	default:
 		return nil, fmt.Errorf("rpc client: unsupported protocol %s, expect http or tcp", protocol)
 	}

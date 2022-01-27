@@ -9,10 +9,10 @@ zRPC is a simple remote procedure call (RPC) framework based on GeeRPC
 - Service Register
 - Timeout Processing
 - HTTP Support
+- Load Balance
 
 Under development:
 
-- Load Balance
 - Registry and Discovery
 
 Future work:
