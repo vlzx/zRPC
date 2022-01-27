@@ -2,8 +2,11 @@ package xclient
 
 import (
 	"errors"
+	"log"
 	"math"
 	"math/rand"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -77,4 +80,73 @@ func (msd *MultiServerDiscovery) GetAll() ([]string, error) {
 	servers := make([]string, len(msd.servers), len(msd.servers))
 	copy(servers, msd.servers)
 	return servers, nil
+}
+
+type RegistryDiscovery struct {
+	*MultiServerDiscovery
+	registry   string
+	timeout    time.Duration
+	lastUpdate time.Time
+}
+
+const defaultUpdateTimeout = time.Second * 10
+
+func NewRegistryDiscovery(registryAddr string, timeout time.Duration) *RegistryDiscovery {
+	if timeout == 0 {
+		timeout = defaultUpdateTimeout
+	}
+	d := &RegistryDiscovery{
+		MultiServerDiscovery: NewMultiServerDiscovery(make([]string, 0)),
+		registry:             registryAddr,
+		timeout:              timeout,
+	}
+	return d
+}
+
+func (d *RegistryDiscovery) Update(servers []string) error {
+	d.mux.Lock()
+	defer d.mux.Unlock()
+	d.servers = servers
+	d.lastUpdate = time.Now()
+	return nil
+}
+
+func (d *RegistryDiscovery) Refresh() error {
+	d.mux.Lock()
+	defer d.mux.Unlock()
+	if d.lastUpdate.Add(d.timeout).After(time.Now()) {
+		return nil
+	}
+	log.Println("rpc client: refresh servers from registry", d.registry)
+	resp, err := http.Get(d.registry)
+	if err != nil {
+		log.Println("rpc registry refresh error", err)
+		return err
+	}
+	servers := strings.Split(resp.Header.Get("X-Zrpc-Servers"), ",")
+	d.servers = make([]string, 0, len(servers))
+	for _, server := range servers {
+		server = strings.TrimSpace(server)
+		if server != "" {
+			d.servers = append(d.servers, server)
+		}
+	}
+	d.lastUpdate = time.Now()
+	return nil
+}
+
+func (d *RegistryDiscovery) Get(mode SelectMode) (string, error) {
+	err := d.Refresh()
+	if err != nil {
+		return "", err
+	}
+	return d.MultiServerDiscovery.Get(mode)
+}
+
+func (d *RegistryDiscovery) GetAll() ([]string, error) {
+	err := d.Refresh()
+	if err != nil {
+		return nil, err
+	}
+	return d.MultiServerDiscovery.GetAll()
 }

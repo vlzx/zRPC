@@ -184,7 +184,7 @@ func (server *Server) sendResponse(c codec.Codec, header *codec.Header, body int
 
 func (server *Server) handleRequest(c codec.Codec, req *request, sending *sync.Mutex, wg *sync.WaitGroup) {
 	defer wg.Done()
-	log.Println(req.header, req.argv)
+	//log.Println(req.header, req.argv)
 	called := make(chan struct{}, 1)
 	sent := make(chan struct{}, 1)
 	timeout := req.header.Timeout

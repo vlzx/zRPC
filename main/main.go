@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"github.com/vlzx/zrpc"
+	"github.com/vlzx/zrpc/registry"
 	"github.com/vlzx/zrpc/xclient"
 	"log"
 	"net"
@@ -36,7 +37,17 @@ func (f Foo) SumSlice(s []int, reply *int) error {
 	return nil
 }
 
-func startServer(addr chan string) {
+func startRegistry(wg *sync.WaitGroup) {
+	listener, err := net.Listen("tcp", ":9999")
+	if err != nil {
+		log.Fatal("network error:", err)
+	}
+	handler := registry.HandleHTTP()
+	wg.Done()
+	_ = http.Serve(listener, handler)
+}
+
+func startServer(registryAddr string, wg *sync.WaitGroup) {
 	var foo Foo
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -50,8 +61,10 @@ func startServer(addr chan string) {
 		log.Fatal("register error:", err)
 	}
 
+	registry.Heartbeat(registryAddr, "http@"+listener.Addr().String(), 0)
+
 	log.Println("start rpc server on", listener.Addr())
-	addr <- listener.Addr().String()
+	wg.Done()
 	//server.Accept(listener) // TCP
 	_ = http.Serve(listener, handler) // HTTP
 }
@@ -111,9 +124,9 @@ func afterLog(xc *xclient.XClient, xcMethod string, serviceMethod string, args *
 	}
 }
 
-func xCall(addr1 string, addr2 string) {
-	msd := xclient.NewMultiServerDiscovery([]string{"http@" + addr1, "http@" + addr2})
-	xc := xclient.NewXClient(msd, xclient.RandomSelect, nil)
+func xCall(registryAddr string) {
+	d := xclient.NewRegistryDiscovery(registryAddr, 0)
+	xc := xclient.NewXClient(d, xclient.RandomSelect, nil)
 	defer func() { _ = xc.Close() }()
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
@@ -126,9 +139,9 @@ func xCall(addr1 string, addr2 string) {
 	wg.Wait()
 }
 
-func xBroadcast(addr1 string, addr2 string) {
-	msd := xclient.NewMultiServerDiscovery([]string{"http@" + addr1, "http@" + addr2})
-	xc := xclient.NewXClient(msd, xclient.RandomSelect, nil)
+func xBroadcast(registryAddr string) {
+	d := xclient.NewRegistryDiscovery(registryAddr, 0)
+	xc := xclient.NewXClient(d, xclient.RandomSelect, nil)
 	defer func() { _ = xc.Close() }()
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
@@ -144,15 +157,21 @@ func xBroadcast(addr1 string, addr2 string) {
 }
 
 func main() {
-	//addr := make(chan string)
-	//go startServer(addr)
-	//call(addr)
+	registryAddr := "http://localhost:9999/_zrpc_/registry"
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go startRegistry(&wg)
+	wg.Wait()
 
-	ch1, ch2 := make(chan string), make(chan string)
-	go startServer(ch1)
-	go startServer(ch2)
-	addr1, addr2 := <-ch1, <-ch2
 	time.Sleep(time.Second)
-	xCall(addr1, addr2)
-	xBroadcast(addr1, addr2)
+
+	wg.Add(2)
+	go startServer(registryAddr, &wg)
+	go startServer(registryAddr, &wg)
+	wg.Wait()
+
+	time.Sleep(time.Second)
+
+	xCall(registryAddr)
+	xBroadcast(registryAddr)
 }
