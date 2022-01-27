@@ -6,6 +6,7 @@ import (
 	"github.com/vlzx/zrpc/xclient"
 	"log"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -42,7 +43,7 @@ func startServer(addr chan string) {
 		log.Fatal("network error:", err)
 	}
 	server := zrpc.NewServer()
-	//server.HandleHTTP() // HTTP
+	handler := server.HandleHTTP() // HTTP
 
 	err = server.Register(&foo)
 	if err != nil {
@@ -51,13 +52,13 @@ func startServer(addr chan string) {
 
 	log.Println("start rpc server on", listener.Addr())
 	addr <- listener.Addr().String()
-	server.Accept(listener) // TCP
-	//_ = http.Serve(listener, nil) // HTTP
+	//server.Accept(listener) // TCP
+	_ = http.Serve(listener, handler) // HTTP
 }
 
 func call(addr chan string) {
-	client, err := zrpc.XDial("tcp@" + <-addr) // TCP
-	//client, err := zrpc.XDial("http@" + <-addr) // HTTP
+	//client, err := zrpc.XDial("tcp@" + <-addr) // TCP
+	client, err := zrpc.XDial("http@" + <-addr) // HTTP
 	if err != nil {
 		log.Fatal("dial error:", err)
 	}
@@ -111,7 +112,7 @@ func afterLog(xc *xclient.XClient, xcMethod string, serviceMethod string, args *
 }
 
 func xCall(addr1 string, addr2 string) {
-	msd := xclient.NewMultiServerDiscovery([]string{"tcp@" + addr1, "tcp@" + addr2})
+	msd := xclient.NewMultiServerDiscovery([]string{"http@" + addr1, "http@" + addr2})
 	xc := xclient.NewXClient(msd, xclient.RandomSelect, nil)
 	defer func() { _ = xc.Close() }()
 	var wg sync.WaitGroup
@@ -126,7 +127,7 @@ func xCall(addr1 string, addr2 string) {
 }
 
 func xBroadcast(addr1 string, addr2 string) {
-	msd := xclient.NewMultiServerDiscovery([]string{"tcp@" + addr1, "tcp@" + addr2})
+	msd := xclient.NewMultiServerDiscovery([]string{"http@" + addr1, "http@" + addr2})
 	xc := xclient.NewXClient(msd, xclient.RandomSelect, nil)
 	defer func() { _ = xc.Close() }()
 	var wg sync.WaitGroup

@@ -236,10 +236,12 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	server.ServeConn(conn)
 }
 
-func (server *Server) HandleHTTP() {
-	http.Handle(defaultRPCPath, server)
-	http.Handle(defaultDebugPath, debugHTTP{server})
+func (server *Server) HandleHTTP() *http.ServeMux {
+	handler := http.NewServeMux()
+	handler.Handle(defaultRPCPath, server)
+	handler.Handle(defaultDebugPath, debugHTTP{server})
 	log.Println("rpc server debug path:", defaultDebugPath)
+	return handler
 }
 
 func HandleHTTP() {
