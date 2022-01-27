@@ -3,7 +3,7 @@ package zrpc
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"github.com/vlzx/zrpc/codec"
@@ -148,11 +148,22 @@ func (client *Client) send(call *Call) {
 func NewClient(conn net.Conn, opt *Option) (*Client, error) {
 	f := codec.NewCodecFuncMap[opt.CodecType]
 	if f == nil {
-		err := fmt.Errorf("invalid codec type %s", opt.CodecType)
+		err := fmt.Errorf("invalid codec type %d", opt.CodecType)
 		log.Println("rpc client: codec error:", err)
 		return nil, err
 	}
-	if err := json.NewEncoder(conn).Encode(opt); err != nil {
+	//if err := json.NewEncoder(conn).Encode(opt); err != nil {
+	//	log.Println("rpc client: option error:", err)
+	//	_ = conn.Close()
+	//	return nil, err
+	//}
+	protocol := []uint64{
+		opt.MagicNumber,
+		opt.CodecType,
+		uint64(opt.ConnectTimeout),
+	}
+	err := binary.Write(conn, binary.BigEndian, protocol)
+	if err != nil {
 		log.Println("rpc client: option error:", err)
 		_ = conn.Close()
 		return nil, err
@@ -180,7 +191,7 @@ func parseOptions(opts ...*Option) (*Option, error) {
 	}
 	opt := opts[0]
 	opt.MagicNumber = DefaultOption.MagicNumber
-	if opt.CodecType == "" {
+	if opt.CodecType == 0 {
 		opt.CodecType = DefaultOption.CodecType
 	}
 	return opt, nil

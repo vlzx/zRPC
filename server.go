@@ -1,7 +1,7 @@
 package zrpc
 
 import (
-	"encoding/json"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"github.com/vlzx/zrpc/codec"
@@ -18,8 +18,8 @@ import (
 const MagicNumber = 0x2a
 
 type Option struct {
-	MagicNumber    int
-	CodecType      string
+	MagicNumber    uint64
+	CodecType      uint64
 	ConnectTimeout time.Duration
 }
 
@@ -90,17 +90,26 @@ func Accept(listener net.Listener) {
 func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 	defer func() { _ = conn.Close() }()
 	var opt Option
-	if err := json.NewDecoder(conn).Decode(&opt); err != nil {
+	//if err := json.NewDecoder(conn).Decode(&opt); err != nil {
+	//	log.Println("rpc server: option error:", err)
+	//	return
+	//}
+	protocol := make([]uint64, 3)
+	err := binary.Read(conn, binary.BigEndian, protocol)
+	if err != nil {
 		log.Println("rpc server: option error:", err)
 		return
 	}
+	opt.MagicNumber = protocol[0]
+	opt.CodecType = protocol[1]
+	opt.ConnectTimeout = time.Duration(protocol[2])
 	if opt.MagicNumber != MagicNumber {
 		log.Printf("zrpc server: invalid magic number %x", opt.MagicNumber)
 		return
 	}
 	f := codec.NewCodecFuncMap[opt.CodecType]
 	if f == nil {
-		log.Printf("zrpc server: invalid codec type %s", opt.CodecType)
+		log.Printf("zrpc server: invalid codec type %d", opt.CodecType)
 		return
 	}
 	server.ServeCodec(f(conn))

@@ -54,24 +54,24 @@ func startServer(registryAddr string, wg *sync.WaitGroup) {
 		log.Fatal("network error:", err)
 	}
 	server := zrpc.NewServer()
-	handler := server.HandleHTTP() // HTTP
+	//handler := server.HandleHTTP() // HTTP
 
 	err = server.Register(&foo)
 	if err != nil {
 		log.Fatal("register error:", err)
 	}
 
-	registry.Heartbeat(registryAddr, "http@"+listener.Addr().String(), 0)
+	registry.Heartbeat(registryAddr, "tcp@"+listener.Addr().String(), 0)
 
 	log.Println("start rpc server on", listener.Addr())
 	wg.Done()
-	//server.Accept(listener) // TCP
-	_ = http.Serve(listener, handler) // HTTP
+	server.Accept(listener) // TCP
+	//_ = http.Serve(listener, handler) // HTTP
 }
 
 func call(addr chan string) {
-	//client, err := zrpc.XDial("tcp@" + <-addr) // TCP
-	client, err := zrpc.XDial("http@" + <-addr) // HTTP
+	client, err := zrpc.XDial("tcp@" + <-addr) // TCP
+	//client, err := zrpc.XDial("tcp@" + <-addr) // HTTP
 	if err != nil {
 		log.Fatal("dial error:", err)
 	}
